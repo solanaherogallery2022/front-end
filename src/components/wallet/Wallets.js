@@ -1,12 +1,3 @@
-import {
-  FormControlLabel,
-  Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-  Tooltip
-} from '@material-ui/core';
 
 import {
   WalletDialogProvider as MaterialUIWalletDialogProvider,
@@ -27,10 +18,8 @@ import {
 import { clusterApiUrl } from '@solana/web3.js';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useMemo } from 'react';
-import RequestAirdrop from './RequestAirdrop';
-import SendTransaction from './SendTransaction';
 
-export const Wallets = () => {
+export const Wallets = ({children}) => {
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
   // clusterApiUrl returns a string.
   // const endpoint = useMemo(() => "http://localhost:8899", []);
@@ -71,15 +60,7 @@ export const Wallets = () => {
     <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} onError={onError} autoConnect={autoConnect}>
         <MaterialUIWalletDialogProvider>
-          <Table>
-            <TableBody>
-              <TableRow>
-                <TableCell>
-                  <MaterialUIWalletMultiButton />
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+          {children}
         </MaterialUIWalletDialogProvider>
       </WalletProvider>
     </ConnectionProvider>

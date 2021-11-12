@@ -1,19 +1,22 @@
 import PropTypes from 'prop-types';
-import { Icon } from '@iconify/react';
-import menu2Fill from '@iconify/icons-eva/menu-2-fill';
 // material
 import { alpha, styled } from '@mui/material/styles';
-import { Box, Stack, AppBar, Toolbar, IconButton, Grid, Paper } from '@mui/material';
+import { Box, AppBar, Toolbar, Grid } from '@mui/material';
 // components
-import { Wallets } from '../../components/wallet';
-import { MHidden } from '../../components/@material-extend';
-//
 
-import { SnackbarProvider } from 'notistack';
-import Searchbar from './Searchbar';
-import AccountPopover from './AccountPopover';
-import LanguagePopover from './LanguagePopover';
-import NotificationsPopover from './NotificationsPopover';
+//
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+} from '@material-ui/core';
+
+import {
+  WalletDialogProvider as MaterialUIWalletDialogProvider,
+  WalletMultiButton as MaterialUIWalletMultiButton,
+} from '@solana/wallet-adapter-material-ui';
+
 
 // ----------------------------------------------------------------------
 
@@ -51,16 +54,21 @@ export default function DashboardNavbar({ onOpenSidebar }) {
       <ToolbarStyle>
           <Grid container>
             <Grid item xs={10}>
-              <Box style={{ color: 'black', fontSize: '40px', fontWeight: 'bold' }}>Hall of Heros - WolfHero NFT Collection</Box>
+              <Box style={{ color: 'black', fontSize: '30px', fontWeight: 'bold' }}>Hall of Heros - Present your Hero Image Here</Box>
             </Grid>
             <Grid item xs={2}>
               
-            <SnackbarProvider>
-              <Wallets />
-            </SnackbarProvider>
+              <Table>
+                <TableBody>
+                  <TableRow>
+                    <TableCell>
+                      <MaterialUIWalletMultiButton />
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
             </Grid>
           </Grid>
-          
       </ToolbarStyle>
     </RootStyle>
   );

@@ -4,7 +4,9 @@ import { Outlet } from 'react-router-dom';
 import { styled } from '@mui/material/styles';
 //
 import DashboardNavbar from './DashboardNavbar';
-import DashboardSidebar from './DashboardSidebar';
+import { Wallets } from '../../components/wallet'
+
+import { SnackbarProvider } from 'notistack';
 
 // ----------------------------------------------------------------------
 
@@ -37,10 +39,15 @@ export default function DashboardLayout() {
 
   return (
     <RootStyle>
-      <DashboardNavbar onOpenSidebar={() => setOpen(true)} />
-      <MainStyle>
-        <Outlet />
-      </MainStyle>
+      
+      <SnackbarProvider>
+        <Wallets>
+          <DashboardNavbar onOpenSidebar={() => setOpen(true)} />
+          <MainStyle>
+            <Outlet />
+          </MainStyle>
+        </Wallets>
+      </SnackbarProvider>
     </RootStyle>
   );
 }
