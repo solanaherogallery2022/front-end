@@ -82,8 +82,7 @@ export default function EcommerceShop() {
         updateData,
         contents
       }}>
-      <Page title="Dashboard: Products | Minimal-UI">
-        <Container>
+      <Page title="Dashboard: Products | Minimal-UI" ml={5}>
           <Stack
             direction="row"
             flexWrap="wrap-reverse"
@@ -108,7 +107,6 @@ export default function EcommerceShop() {
             draggable
             pauseOnHover
           />
-        </Container>
       </Page>
     </ModalContext.Provider>
   );

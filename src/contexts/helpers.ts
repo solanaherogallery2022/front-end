@@ -4,7 +4,8 @@ import { Keypair,
         PublicKey, 
         SystemProgram,
         Transaction,
-        TransactionInstruction } from '@solana/web3.js';
+        TransactionInstruction,
+        sendAndConfirmTransaction } from '@solana/web3.js';
 
 // for rest function
 import { Token, TOKEN_PROGRAM_ID, AccountLayout } from "@solana/spl-token";
@@ -16,6 +17,8 @@ import {
   RecordSchema1,
   UpdateNFTArgs,
   UpdateNFTSchema,
+  BuyRecordArgs,
+  BuyRecordSchema,
   chunks,
   ContentRecord,
   showToast
@@ -23,15 +26,19 @@ import {
 import axios from 'axios';
 import BN from 'bn.js';
 import { WalletContextState } from '@solana/wallet-adapter-react';
+import { programs, Connection, actions } from '@metaplex/js';
+import { Data, updateMetadata, Creator, createMetadata } from './metadata';
+const { metaplex: { Store, AuctionManager }, auction: { Auction }, vault: { Vault }, metadata: {Metadata} } = programs;
+
 
 const solConnection = new web3.Connection(web3.clusterApiUrl("devnet"));
 
-
 const PDA_SEED = "hallofheros";
 const NFT_RECORD_SPACE = 250; // RECORD_MAX_SIZE
+const RECORD_CNT = 64;
 
 const REPO_PROGRAM_ID = new PublicKey(
-  "4p1oq2vTyran6rpx6BDXi4pi5DjTUcNX7vFKsgmGTT81"
+  "ADKQSZo6gWSKWYPWjRVbnovkLtsn3jWGV69oLYoXvcom"
 );
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
   "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
@@ -40,9 +47,14 @@ const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 );
 const REPO_ACCOUNT_PUBKEY = new PublicKey(
-  "67PefZpyHPzc9SEgZXwiakzvqDdPuYM5vhdBG9mEhHPT"
+  "HyWFCwGmE1rQipaNWHsa8YvphYNFqgowfZc3LmXqXo4m"
 );
+const DEAD_NFT_URI = "https://arweave.net/RZc2Tofy92aiWDZcb574VXHGzJHMssvBPnCmr_Uo0UM";
 
+const ADMIN_KEY_PAIR = Keypair.fromSecretKey(
+  //bs58.decode("4o7bg2vu3TD8SY2M1rBZXtYvYAbXXUQSx8VU97BEQqoz4AfWAwmhzssLcxvxLXPctEcmCcap8Kd3iQrWnhgcMcgZ")
+  new Uint8Array([166,131,100,248,20,124,18,55,184,173,190,64,234,175,37,130,60,128,135,120,228,183,27,65,69,76,209,208,53,79,220,17,31,165,240,23,153,231,78,125,144,127,227,98,175,2,129,5,191,45,52,105,72,143,174,90,65,128,144,232,80,176,75,21])
+);
 
 export const updateRecord = async (nftId: number, nftKey: PublicKey, price: BN, contentURI: string, wallet: WalletContextState) => {
   console.log(nftId + '  ' + nftKey.toBase58() + '  ' + price.toString() + '  uri=', contentURI);
@@ -82,8 +94,6 @@ export const updateRecord = async (nftId: number, nftKey: PublicKey, price: BN, 
     keys: [
       {pubkey: wallet.publicKey, isSigner: true, isWritable: false},
       {pubkey: REPO_ACCOUNT_PUBKEY, isSigner: false, isWritable: true},
-      {pubkey: nftKey, isSigner: false, isWritable: false},
-      {pubkey: associatedTokenAccount, isSigner: false, isWritable: false},
     ],
     programId: REPO_PROGRAM_ID,
     data: buffer,
@@ -110,6 +120,7 @@ export const getRecords = async () :Promise<ContentRecord[]> => {
       owner: null
     })
   ));
+  console.log("result of getRecords() =", contents);
   return contents;
 }
 export const getContents = async (records: ContentRecord[]) => {
@@ -124,13 +135,12 @@ export const getContents = async (records: ContentRecord[]) => {
       records[i].name = offchain_data.data.name;
     }
   }
+  console.log("result of getContents() =", records);
   return records;
 }
 export const getFullContents = async () => {
   let records : ContentRecord[] = await getRecords();
   let contents = await getContents(records);
-  console.log("9's key=", contents[8].key_nft.toBase58());
-  console.log("9's owner=", contents[8].owner);
   //getOwnerOfNFT
   return contents;
 }
@@ -155,7 +165,7 @@ const getRepoAccountInfo = async () : Promise<NFTRecord1[]> => {
     return [];
   }
   const records = chunks(recordsInfo.data.slice(), NFT_RECORD_SPACE);
-  let unpacked_records = records.slice(0, 12).map((packInfo, idx) => {
+  let unpacked_records = records.slice(0, RECORD_CNT).map((packInfo, idx) => {
     let record = borsh.deserializeUnchecked(RecordSchema1, NFTRecord1, Buffer.from(packInfo)) as NFTRecord1;
     return record;
   })
@@ -178,7 +188,10 @@ const getRepoAccountInfo = async () : Promise<NFTRecord1[]> => {
 
 export const buyNFT = async (nftId: number, nftKey: PublicKey, wallet: WalletContextState) => {
   if (!wallet.publicKey) return;
-
+  console.log("buyNFT nftKey =", nftKey.toBase58());
+  let { newMintPubkey, tokenAccountPubKey } = await mintNewToken(nftKey);
+  //await updateMetadataV2(nftKey);
+  
   const prevOwnerPK = await getOwnerOfNFT(nftKey);
 
   let nfts_metadata = await solConnection.getProgramAccounts(
@@ -196,48 +209,76 @@ export const buyNFT = async (nftId: number, nftKey: PublicKey, wallet: WalletCon
   );
   if (nfts_metadata.length === 0) return;
   
-  let nft_account_pk_to_send = await getAssociatedTokenAccount(prevOwnerPK, nftKey); 
-
+  let old_nft_account_pk = await getNFTTokenAccount(nftKey); 
+  let nft_account_pk_to_send = tokenAccountPubKey;
   let {
     tempNFTTokenAccountKeypair, 
     createTempTokenAccountIx, 
-    initTempAccountIx} = await createReceiveTokenAccountIx(wallet.publicKey, nftKey);
+    initTempAccountIx} = await createReceiveTokenAccountIx(wallet.publicKey, newMintPubkey);
   let nft_account_pk_to_receive = tempNFTTokenAccountKeypair.publicKey;//new PublicKey("DJNwjdLbeBpc9zZ4m1zRLDHbnjcw3yPbB8Gs3dSRReA4");//await getToReceiveTokenAccount(buyerKeyPair.publicKey, nftKey); 
   //let nft_account_pk_to_receive = await getToSendTokenAccount(buyerKeyPair.publicKey, nftKey); 
 
-  console.log("nft_account_pk_to_send =", nft_account_pk_to_send.toBase58());
-  console.log("nft_account_pk_to_receive =", nft_account_pk_to_receive.toBase58());
-    
   const PDA = await PublicKey.findProgramAddress(
     [Buffer.from(PDA_SEED)],
     REPO_PROGRAM_ID
   );
 
+  console.log("before buy");
+  console.log("wallet.publicKey =", wallet.publicKey.toBase58());
+  console.log("prevOwnerPK =", prevOwnerPK.toBase58());
+  console.log("nftKey =", nftKey.toBase58());
+  console.log("old_nft_account_pk =", old_nft_account_pk.toBase58());
+  console.log("nft_account_pk_to_receive =", nft_account_pk_to_receive.toBase58());
+  console.log("PDA[0] =", PDA[0].toBase58());
+  console.log("TOKEN_PROGRAM_ID =", TOKEN_PROGRAM_ID.toBase58());
+  console.log("SystemProgram =", SystemProgram.programId.toBase58());
+
+  let oldNFTmetadataAccount = await Metadata.getPDA(nftKey);
+
+  let args = new BuyRecordArgs({
+    hero_id: nftId,
+    dead_uri: DEAD_NFT_URI,
+    dead_name: "DEAD Seat"
+  });
+
+  let instructionInfo = borsh.serialize(BuyRecordSchema, args);
+  let buffer = Buffer.concat([Buffer.from(Uint8Array.of(2)), Buffer.from(instructionInfo)]);
+
   const instruction = new TransactionInstruction({
     keys: [
+      {pubkey: ADMIN_KEY_PAIR.publicKey, isSigner: true, isWritable: true},
       {pubkey: wallet.publicKey, isSigner: true, isWritable: true},
       {pubkey: prevOwnerPK, isSigner: false, isWritable: true},
       {pubkey: REPO_ACCOUNT_PUBKEY, isSigner: false, isWritable: true},
-      {pubkey: nftKey, isSigner: false, isWritable: false},
+      {pubkey: nftKey, isSigner: false, isWritable: false}, // old NFT Key
+      {pubkey: old_nft_account_pk, isSigner: false, isWritable: true},
+      {pubkey: oldNFTmetadataAccount, isSigner: false, isWritable: true},
+
+      {pubkey: newMintPubkey, isSigner: false, isWritable: true}, // new NFT Key
       {pubkey: nft_account_pk_to_send, isSigner: false, isWritable: true},
       {pubkey: nft_account_pk_to_receive, isSigner: false, isWritable: true},
-      {pubkey: PDA[0], isSigner: false, isWritable: false},
+
       {pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false},
+      {pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false},
       {pubkey: SystemProgram.programId, isSigner: false, isWritable: false},
     ],
     programId: REPO_PROGRAM_ID,
-    data: Buffer.from(Uint8Array.of(2, nftId)),
+    data: buffer,
   });
   console.log("buying nft...");
 
+  
   let tx = new Transaction().add(
     createTempTokenAccountIx,
     initTempAccountIx,
     instruction
   );
-  
+
+  let block = await solConnection.getRecentBlockhash("confirmed");
+  tx.recentBlockhash = block.blockhash;
+
   await wallet.sendTransaction(tx, solConnection, {
-    signers: [tempNFTTokenAccountKeypair]
+    signers: [ADMIN_KEY_PAIR, tempNFTTokenAccountKeypair]
   }).then(result => {
     showToast("Successfully bought. Check your wallet", 0);
     return true;
@@ -246,7 +287,6 @@ export const buyNFT = async (nftId: number, nftKey: PublicKey, wallet: WalletCon
     return false;
   });
 }
-
 
 const getOwnerOfNFT = async (nftMintPk : PublicKey) : Promise<PublicKey> => {
   let tokenAccountPK = await getNFTTokenAccount(nftMintPk);
@@ -264,7 +304,7 @@ const getOwnerOfNFT = async (nftMintPk : PublicKey) : Promise<PublicKey> => {
 }
 
 const getNFTTokenAccount = async (nftMintPk : PublicKey) : Promise<PublicKey> => {
-  console.log("getNFTTokenAccount nftMintPk=", nftMintPk);
+  console.log("getNFTTokenAccount nftMintPk=", nftMintPk.toBase58());
   let tokenAccount = await solConnection.getProgramAccounts(
     TOKEN_PROGRAM_ID,
     {
@@ -322,4 +362,119 @@ const createReceiveTokenAccountIx = async (receiverPK : PublicKey, mintPk : Publ
   return {
     tempNFTTokenAccountKeypair, createTempTokenAccountIx, initTempAccountIx
   }
+}
+
+
+const mintNewToken = async (nftKey: PublicKey) => {
+  // Create new token mint
+  const mint = await Token.createMint(
+    solConnection,
+    ADMIN_KEY_PAIR,
+    ADMIN_KEY_PAIR.publicKey,
+    ADMIN_KEY_PAIR.publicKey,
+    0,
+    TOKEN_PROGRAM_ID,
+  );
+
+  // Get the token account of the fromWallet Solana address, if it does not exist, create it
+  const fromTokenAccount = await mint.getOrCreateAssociatedAccountInfo(
+    ADMIN_KEY_PAIR.publicKey,
+  );
+
+  // Minting 1 new token to the "fromTokenAccount" account we just returned/created
+  await mint.mintTo(
+    fromTokenAccount.address,
+    ADMIN_KEY_PAIR.publicKey,
+    [],
+    1,
+  );
+  console.log("mint addr", mint.publicKey.toBase58());
+  console.log("from account ",fromTokenAccount.address.toBase58());
+
+  // creating metadata
+  let { metadata : {Metadata, UpdateMetadata, MetadataDataData} } = programs;
+  let nftMintAccount = new PublicKey(nftKey);
+  let metadataAccount = await Metadata.getPDA(nftMintAccount);
+  const metadat = await Metadata.load(solConnection, metadataAccount);
+  let metadataData = metadat.data.data;
+  console.log("metadataData =", metadataData);
+  const creators = [
+    new Creator({
+        address: ADMIN_KEY_PAIR.publicKey.toBase58(),
+        share: 100,
+        verified: true
+    }),
+  ];
+  let data = new Data({
+    name: metadataData.name,
+    symbol: metadataData.symbol,
+    uri: metadataData.uri,
+    creators,
+    sellerFeeBasisPoints: metadataData.sellerFeeBasisPoints,
+  });
+  let instructions : TransactionInstruction[] = [];
+  await createMetadata(
+    data,
+    ADMIN_KEY_PAIR.publicKey.toBase58(),
+    mint.publicKey.toBase58(),
+    ADMIN_KEY_PAIR.publicKey.toBase58(),
+    instructions,
+    ADMIN_KEY_PAIR.publicKey.toBase58()
+  );
+  
+  let result = await sendAndConfirmTransaction(solConnection, new Transaction().add(instructions[0]), [ADMIN_KEY_PAIR]);
+  console.log("result =", result);
+  return { newMintPubkey: mint.publicKey, tokenAccountPubKey: fromTokenAccount.address };
+};
+
+export const updateMetadataV2 = async (nftMintAccount: PublicKey) => {
+
+  // wolf #3 - 9kaa4ComxWXxa7hSUWUZon5UkkK2QurJ5xe9iqs9EvsF
+  // seat #7 - Br9cYGi8zUL129H6VHPPLuZNCBbP9siCMwRuLEynCV76
+  //let nftMintAccount = new PublicKey("Br9cYGi8zUL129H6VHPPLuZNCBbP9siCMwRuLEynCV76");
+  let metadataAccount = await Metadata.getPDA(nftMintAccount);
+  const metadat = await Metadata.load(solConnection, metadataAccount);
+  let metadataData = metadat.data.data;
+
+  if (metadataData.creators === null) {
+    console.log("metadataData.creators is null");
+    return;
+  }
+  console.log("original metadata =", metadataData);
+
+  const creators = metadataData.creators.map(
+    (el) =>
+        new Creator({
+            address: new PublicKey(el.address).toBase58(),
+            share: el.share,
+            verified: el.verified
+        }),
+  );
+  
+  console.log("creators =", creators);
+
+  let data = new Data({
+      name: metadataData.name,
+      symbol: metadataData.symbol,
+      uri: DEAD_NFT_URI,
+      creators: [...creators],
+      sellerFeeBasisPoints: metadataData.sellerFeeBasisPoints,
+  });
+
+  console.log("data=", data);
+
+  let instructions: TransactionInstruction[] = [];
+
+  let res = await updateMetadata(
+      data,
+      ADMIN_KEY_PAIR.publicKey.toBase58(),
+      true,
+      nftMintAccount.toBase58(),
+      ADMIN_KEY_PAIR.publicKey.toBase58(),
+      instructions,
+      metadataAccount.toBase58()
+  );
+
+  let result = await sendAndConfirmTransaction(solConnection, new Transaction().add(instructions[0]), [ADMIN_KEY_PAIR]);
+  console.log("result =", result);
 }

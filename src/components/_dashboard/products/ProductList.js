@@ -15,9 +15,9 @@ export default function ProductList({ ...other }) {
   
   const { contents } = useModalContext();
   return (
-    <Grid container spacing={3} {...other}>
+    <Grid container spacing={1} {...other}>
       {contents.map((product, i) => (
-        <Grid key={/*product.id*/ i} item xs={12} sm={6} md={3}>
+        <Grid key={/*product.id*/ i} item style={{width:'12%'}}>
           <ShopProductCard product={product} />
         </Grid>
       ))}

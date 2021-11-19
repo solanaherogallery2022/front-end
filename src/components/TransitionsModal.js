@@ -120,7 +120,6 @@ export default function TransitionsModal() {
           updateData(hero_id, listed_price, content_uri, wallet.publicKey);
         }
       });
-     // console.log("wallet connected. ", wallet.publicKey.toBase58());
     } else {
       showToast();
     }
@@ -150,7 +149,7 @@ export default function TransitionsModal() {
               <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flex: '1 0 auto' }}>
                   <Typography component="div" variant="h4">
-                    Hall of HERO #{hero_id}
+                    Seat #{hero_id+1}
                   </Typography>
                   <Typography component="div" variant="h6">
                     { name }

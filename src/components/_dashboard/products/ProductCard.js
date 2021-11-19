@@ -56,25 +56,17 @@ export default function ShopProductCard({ product }) {
         }
         
       <Box sx={{ pt: '100%', position: 'relative' }}>
-        <Label
-          variant="filled"
-          color={'info'}
-          sx={{
-            zIndex: 9,
-            top: 16,
-            right: 16,
-            position: 'absolute',
-            textTransform: 'uppercase'
-          }}
-        >
-          {"new"}
-        </Label>
+
         <Link href={image_uri} target="_blank">
           <ProductImgStyle alt={name} src={image_uri} />
         </Link>
       </Box>
 
       <Stack spacing={1} sx={{ p: 3 }}>
+
+        <Typography component="div" variant="subtitle2">
+            Seat #{hero_id+1}
+        </Typography>
 
         <Link href={key_nft == undefined ? '#': "https://solscan.io/account/" + key_nft.toBase58() + "?cluster=devnet"} target="_blank">
           <Stack direction="row" alignItems="center" justifyContent="space-between">
@@ -108,7 +100,7 @@ export default function ShopProductCard({ product }) {
             variant="contained"
             onClick={() => {onDetailClick()}}
           >
-              View Details
+              Details
           </Button>
         </Stack>
       </Stack>
