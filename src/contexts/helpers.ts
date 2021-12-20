@@ -50,17 +50,17 @@ const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 );
 const REPO_ACCOUNT_PUBKEY = new PublicKey(
-  "8VyUz9rJLaN3DfyyDgPytSa1fycgYDxvX4G1mB8rpFaM"
+  "B9tTWxpmRBDTFQDpu2EzLTk7v7QkdN3t3pgTKpLJMgzX"
 );
 const DEAD_NFT_URI = "https://arweave.net/RZc2Tofy92aiWDZcb574VXHGzJHMssvBPnCmr_Uo0UM";
 
-/*const ADMIN_KEY_PAIR = Keypair.fromSecretKey(
+const ADMIN_KEY_PAIR = Keypair.fromSecretKey(
   //bs58.decode("4o7bg2vu3TD8SY2M1rBZXtYvYAbXXUQSx8VU97BEQqoz4AfWAwmhzssLcxvxLXPctEcmCcap8Kd3iQrWnhgcMcgZ")
   new Uint8Array([166,131,100,248,20,124,18,55,184,173,190,64,234,175,37,130,60,128,135,120,228,183,27,65,69,76,209,208,53,79,220,17,31,165,240,23,153,231,78,125,144,127,227,98,175,2,129,5,191,45,52,105,72,143,174,90,65,128,144,232,80,176,75,21])
-);*/
-const ADMIN_KEY_PAIR = Keypair.fromSecretKey(
+);
+/*const ADMIN_KEY_PAIR = Keypair.fromSecretKey(
   bs58.decode("4o7bg2vu3TD8SY2M1rBZXtYvYAbXXUQSx8VU97BEQqoz4AfWAwmhzssLcxvxLXPctEcmCcap8Kd3iQrWnhgcMcgZ")
-); 
+);*/ 
 
 export const updateRecord = async (nftId: number, nftKey: PublicKey, price: BN, contentURI: string, wallet: WalletContextState) => {
   console.log(nftId + '  ' + nftKey.toBase58() + '  ' + price.toString() + '  uri=', contentURI);
@@ -71,8 +71,8 @@ export const updateRecord = async (nftId: number, nftKey: PublicKey, price: BN, 
   console.log("pubkey =",ADMIN_KEY_PAIR.publicKey.toBase58());
   console.log("updateRecord cloneWindow['solana'] = ", cloneWindow['solana']);
   
-  let anchor_wallet = new anchor.Wallet(ADMIN_KEY_PAIR);
-  let provider = new anchor.Provider(solConnection, anchor_wallet, anchor.Provider.defaultOptions())
+  //let anchor_wallet = new anchor.Wallet(ADMIN_KEY_PAIR);
+  let provider = new anchor.Provider(solConnection, cloneWindow['solana'], anchor.Provider.defaultOptions())
   const program = new anchor.Program(IDL, REPO_PROGRAM_ID, provider);
   
   let associatedTokenAccount = await getNFTTokenAccount(nftKey);
@@ -82,12 +82,12 @@ export const updateRecord = async (nftId: number, nftKey: PublicKey, price: BN, 
 
   let result = await program.rpc.updateRecord(nftId, contentURI, new anchor.BN(price), {
     accounts: {
-      updater: ADMIN_KEY_PAIR.publicKey,
+      updater: wallet.publicKey,
       repository: REPO_ACCOUNT_PUBKEY,
       nftMint: nftKey,
       associatedTokenAccount
     },
-    signers: [ADMIN_KEY_PAIR]
+    signers: []
   }).catch(error => {
     showToast(error, 1);
   });
@@ -236,7 +236,7 @@ export const buyNFT = async (nftData: ContentRecord, nftKey: PublicKey, wallet: 
   let provider = new anchor.Provider(solConnection, cloneWindow['solana'], anchor.Provider.defaultOptions())
   const program = new anchor.Program(IDL, REPO_PROGRAM_ID, provider);
   
-  await program.rpc.buyRecord(nftData.hero_id, DEAD_NFT_URI, "DEAD Seat", {
+  let result = await program.rpc.buyRecord(nftData.hero_id, DEAD_NFT_URI, "DEAD Seat", {
     accounts: {
       initializer: ADMIN_KEY_PAIR.publicKey,
       buyer: wallet.publicKey,
@@ -254,8 +254,19 @@ export const buyNFT = async (nftData: ContentRecord, nftKey: PublicKey, wallet: 
       tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
       systemProgram: SystemProgram.programId
     },
+    instructions:[
+      createTempTokenAccountIx,
+      initTempAccountIx
+    ],
     signers: [ADMIN_KEY_PAIR, tempNFTTokenAccountKeypair]
+  }).catch(error => {
+    showToast(error, 1);
   });
+  if (result !== undefined) {
+    showToast("Successfully bought. txHash=" + result, 0);
+    return true;
+  }
+  return false;
 }
 
 export const buyNFT_ = async (nftData: ContentRecord, nftKey: PublicKey, wallet: WalletContextState) => {
