@@ -114,7 +114,7 @@ export default function TransitionsModal() {
       console.log("wallet connected");
       let nftkey = new PublicKey(key_nft);
       setBuyLoading(true);
-      buyNFT(hero_id, nftkey, wallet).then((buySucceed) => {
+      buyNFT(nftModalInfo, nftkey, wallet).then((buySucceed) => {
         setBuyLoading(false);
         if (buySucceed) {
           updateData(hero_id, listed_price, content_uri, wallet.publicKey);
